@@ -31,7 +31,7 @@ import os
 from colorama import Fore
 
 # Sklearn
-
+from sklearn.naive_bayes import GaussianNB
 from sklearn.calibration import LabelEncoder
 from sklearn.metrics import f1_score, confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split, GridSearchCV
@@ -550,7 +550,25 @@ def kNN():
     :type data: pandas.DataFrame
     :return: Tupla con la clasificación de los datos.
     :rtype: tuple
-    """
+    """gs = GridSearchCV(
+            DecisionTreeClassifier(),
+            args.decision_tree,
+            cv=5,
+            n_jobs=args.cpu,
+            scoring=args.estimator
+        )
+
+        start_time = time.time()
+        gs.fit(x_train, y_train)
+        end_time = time.time()
+
+        # Barra de progreso (igual que en kNN)
+        for i in range(100):
+            time.sleep(random.uniform(0.06, 0.15))
+            pbar.update(random.random()*2)
+        pbar.n = 100
+        pbar.last_print_n = 100
+        pbar.update(0)
     # Dividimos los datos en entrenamiento y dev
     x_train, x_dev, y_train, y_dev = divide_data()
    
@@ -592,6 +610,25 @@ def decision_tree():
     with tqdm(total=100, desc='Procesando decision tree', unit='iter', leave=True) as pbar:
         #TODO Llamar al decision trees
         #gs = GridSearchCV(
+        gs = GridSearchCV(
+            DecisionTreeClassifier(),
+            args.decision_tree,
+            cv=5,
+            n_jobs=args.cpu,
+            scoring=args.estimator
+        )
+
+        start_time = time.time()
+        gs.fit(x_train, y_train)
+        end_time = time.time()
+
+        # Barra de progreso (igual que en kNN)
+        for i in range(100):
+            time.sleep(random.uniform(0.06, 0.15))
+            pbar.update(random.random()*2)
+        pbar.n = 100
+        pbar.last_print_n = 100
+        pbar.update(0)
    
     execution_time = end_time - start_time
     print("Tiempo de ejecución:"+Fore.MAGENTA, execution_time,Fore.RESET+ "segundos")
@@ -622,6 +659,25 @@ def random_forest():
     with tqdm(total=100, desc='Procesando random forest', unit='iter', leave=True) as pbar:
         #TODO Llamar al decision trees
         #gs = GridSearchCV(
+        gs = GridSearchCV(
+            DecisionTreeClassifier(),
+            args.decision_tree,
+            cv=5,
+            n_jobs=args.cpu,
+            scoring=args.estimator
+        )
+
+        start_time = time.time()
+        gs.fit(x_train, y_train)
+        end_time = time.time()
+
+        # Barra de progreso (igual que en kNN)
+        for i in range(100):
+            time.sleep(random.uniform(0.06, 0.15))
+            pbar.update(random.random()*2)
+        pbar.n = 100
+        pbar.last_print_n = 100
+        pbar.update(0)
     execution_time = end_time - start_time
     print("Tiempo de ejecución:"+Fore.MAGENTA, execution_time,Fore.RESET+ "segundos")
    
@@ -630,7 +686,44 @@ def random_forest():
    
     # Guardamos el modelo utilizando pickle
     save_model(gs)
+    
+def naive_bayes():
+    """
+    Función para implementar el algoritmo Naive Bayes.
+    """
+    # Dividimos los datos en entrenamiento y dev
+    x_train, x_dev, y_train, y_dev = divide_data()
+    
+    # Hacemos un barrido de hiperparametros
+    with tqdm(total=100, desc='Procesando naive bayes', unit='iter', leave=True) as pbar:
+        
+        gs = GridSearchCV(
+            GaussianNB(),
+            args.naive_bayes,
+            cv=5,
+            n_jobs=args.cpu,
+            scoring=args.estimator
+        )
 
+        start_time = time.time()
+        gs.fit(x_train, y_train)
+        end_time = time.time()
+
+        for i in range(100):
+            time.sleep(random.uniform(0.06, 0.15))
+            pbar.update(random.random() * 2)
+        pbar.n = 100
+        pbar.last_print_n = 100
+        pbar.update(0)
+
+    execution_time = end_time - start_time
+    print("Tiempo de ejecución:" + Fore.MAGENTA, execution_time, Fore.RESET + " segundos")
+    
+    # Mostramos los resultados
+    mostrar_resultados(gs, x_dev, y_dev)
+    
+    # Guardamos el modelo utilizando pickle
+    save_model(gs)
 # Funciones para predecir con un modelo
 
 def load_model():
