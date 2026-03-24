@@ -645,7 +645,7 @@ def predict():
     # Añadimos la prediccion al dataframe data
     data = pd.concat([data, pd.DataFrame(prediction, columns=[args.prediction])], axis=1)
    
-# Función principal
+# ======================= PROGRAMA PRINCIPAL =======================
 
 if __name__ == "__main__":
     # Fijamos la semilla
