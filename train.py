@@ -453,17 +453,42 @@ def divide_data():
     """
     Función que divide los datos en conjuntos de entrenamiento y desarrollo.
 
-    Parámetros:
-    - data: DataFrame que contiene los datos.
-    - args: Objeto que contiene los argumentos necesarios para la división de datos.
-
     Retorna:
     - x_train: DataFrame con las características de entrenamiento.
     - x_dev: DataFrame con las características de desarrollo.
     - y_train: Serie con las etiquetas de entrenamiento.
     - y_dev: Serie con las etiquetas de desarrollo.
     """
-    # Sacamos la columna a predecir
+    global data
+
+    try:
+        # Sacamos la columna a predecir
+        X = data.drop(columns=[args.prediction])
+        y = data[args.prediction]
+
+        # Dividimos los datos
+        x_train, x_dev, y_train, y_dev = train_test_split(
+            X,
+            y,
+            test_size=args.split["test_size"],
+            random_state=args.split["random_state"],
+            stratify=y
+        )
+
+        print(Fore.GREEN + "Datos divididos con éxito" + Fore.RESET)
+
+        if args.debug:
+            print(Fore.MAGENTA + "> Tamaño x_train:" + Fore.RESET, x_train.shape)
+            print(Fore.MAGENTA + "> Tamaño x_dev:" + Fore.RESET, x_dev.shape)
+            print(Fore.MAGENTA + "> Tamaño y_train:" + Fore.RESET, y_train.shape)
+            print(Fore.MAGENTA + "> Tamaño y_dev:" + Fore.RESET, y_dev.shape)
+
+        return x_train, x_dev, y_train, y_dev
+
+    except Exception as e:
+        print(Fore.RED + "Error al dividir los datos" + Fore.RESET)
+        print(e)
+        sys.exit(1)
  #TODO
  
  
