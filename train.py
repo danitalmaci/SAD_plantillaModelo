@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
- 
-# ======================= PLANTILLA =======================
+
+# ======================= PLANTILLA - TRAIN =======================
 
 
 """
@@ -31,16 +31,16 @@ import os
 from colorama import Fore
 
 # Sklearn
+
 from sklearn.naive_bayes import GaussianNB
-# from sklearn.calibration import LabelEncoder
 from sklearn.metrics import f1_score, confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler, Normalizer, StandardScaler
+from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler, StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OneHotEncoder
 
 # Nltk
 
@@ -58,7 +58,7 @@ from tqdm import tqdm
 # ======================= PROGRAMA =======================
 
 
-# ------------ Funciones auxiliares ------------
+# ----------------- Funciones auxiliares -----------------
 
 def signal_handler(sig, frame):
     """
@@ -66,6 +66,7 @@ def signal_handler(sig, frame):
     :param sig: Señal
     :param frame: Frame
     """
+
     print("\nSaliendo del programa...")
     sys.exit(0)
 
@@ -73,25 +74,32 @@ def parse_args():
     """
     Función para parsear los argumentos de entrada
     """
+
     parse = argparse.ArgumentParser(description="Practica de algoritmos de clasificación de datos.")
-    parse.add_argument("-m", "--mode", help="Modo de ejecución (train o test)", required=True)
-    parse.add_argument("-f", "--file", help="Fichero csv (/Path_to_file)", required=True)
-    parse.add_argument("-a", "--algorithm", help="Algoritmo a ejecutar (kNN, decision_tree, random_forest o naive_bayes)", required=True)
-    parse.add_argument("-p", "--prediction", help="Columna a predecir (Nombre de la columna)", required=True)
+    # Parametros necesarios
+    parse.add_argument("-j", "--json", help="Archivo de configuración JSON", required=True)
+    # Parametros opcionales
     parse.add_argument("-e", "--estimator", help="Estimador a utilizar para elegir el mejor modelo https://scikit-learn.org/stable/modules/model_evaluation.html#scoring-parameter", required=False, default=None)
     parse.add_argument("-c", "--cpu", help="Número de CPUs a utilizar [-1 para usar todos]", required=False, default=-1, type=int)
     parse.add_argument("-v", "--verbose", help="Muestra las metricas por la terminal", required=False, default=False, action="store_true")
     parse.add_argument("--debug", help="Modo debug [Muestra informacion extra del preprocesado y almacena el resultado del mismo en un .csv]", required=False, default=False, action="store_true")
-    # Parseamos los argumentos
+    
+    # Parseamos los argumentos Y obtenemos el JSON proporcionado
     args = parse.parse_args()
-   
-    # Leemos los parametros del JSON
-    with open('clasificador.json') as json_file:
-        config = json.load(json_file)
-   
-    # Juntamos todo en una variable
-    for key, value in config.items():
-        setattr(args, key, value)
+
+    # Se intenta acceder al JSON
+    try:
+        # El JSON se convierte en un diccionario (config)
+        with open(args.json, 'r') as json_file:
+            config = json.load(json_file)
+
+        # Asigna cada par clave-valor del JSON como atributo del objeto 'args'
+        for key, value in config.items():
+            setattr(args, key, value)
+
+    except FileNotFoundError:
+        print(f"Error: No se encontró el archivo {args.json}")
+        sys.exit(1)
    
     # Parseamos los argumentos
     return args
@@ -99,8 +107,10 @@ def parse_args():
 def load_data(file):
     """
     Función para cargar los datos de un fichero csv
-    :param file: Fichero csv
-    :return: Datos del fichero
+    Param 
+        file: Fichero csv
+    Returns:
+        Datos del fichero
     """
     try:
         data = pd.read_csv(file, encoding='utf-8')
@@ -111,22 +121,40 @@ def load_data(file):
         print(e)
         sys.exit(1)
 
-# Funciones para calcular métricas
+# ---------- Funciones para cálculo de Métricas ----------
 
 # TODO Aqui poned lo que hayais hecho
 
 def calculate_fscore(y_true, y_pred):
+    """
+    Función para calcular el F-Score del modelo
+  
+    Returns:
+        Macro y Micro F-Score
+    """
     fscore_micro = f1_score(y_true, y_pred, average='micro')
     fscore_macro = f1_score(y_true, y_pred, average='macro')
     return fscore_micro, fscore_macro
 
 def calculate_confusion_matrix(y_true, y_pred):
+    """
+    Función para calcular la matriz de confusión
+  
+    Returns:
+        Macro y Micro F-Score
+    """
     return confusion_matrix(y_true, y_pred)
 
 def calculate_classification_report(y_true, y_pred):
+    """
+    Función para calcular el informe de clasificación
+  
+    Returns:
+        Informe de clasificación
+    """
     return classification_report(y_true, y_pred)
 
-# Funciones para preprocesar los datos
+# -------------- Funciones de Preprocesado --------------
 
 def select_features():
     """
@@ -142,6 +170,7 @@ def select_features():
         numerical_feature = data.select_dtypes(include=['int64', 'float64']) # Columnas numéricas
         if args.prediction in numerical_feature.columns:
             numerical_feature = numerical_feature.drop(columns=[args.prediction])
+
         # Categorical features
         categorical_feature = data.select_dtypes(include='object')
         categorical_feature = categorical_feature.loc[:, categorical_feature.nunique() <= args.preprocessing["unique_category_threshold"]]
@@ -183,7 +212,7 @@ def get_balancing_config():
 
 def apply_missing_strategy(col, strategy_cfg, is_numeric=True):
     """
-    Aplica la estrategia indicada en el JSON para los valores faltantes de una columna.
+    Función que aplica la estrategia indicada en el JSON para los valores faltantes de una columna.
     """
     global data
 
@@ -213,7 +242,7 @@ def apply_missing_strategy(col, strategy_cfg, is_numeric=True):
 
 def build_scaler(method):
     """
-    Crea el scaler correspondiente al método indicado.
+    Función que crea el scaler correspondiente al método indicado.
     """
     if method == "standard":
         return StandardScaler()
@@ -278,19 +307,30 @@ def cat2num(categorical_feature):
     """
     global data
 
-    print("Conversión de variables categóricas a numéricas (Label Encoding)")
+    print("Conversión de variables categóricas a numéricas (One-Hot Encoding)")
 
-    for col in categorical_feature.columns:
-        print(f"Codificando la columna {col}...")
-
-        encoder = LabelEncoder()
-        data[col] = encoder.fit_transform(data[col].astype(str))
-   
+    # Crear encoder
+    encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    # Ajustar y transformar
+    encoded = encoder.fit_transform(data[categorical_feature.columns])
+    # Obtener nombres de columnas nuevas
+    encoded_columns = encoder.get_feature_names_out(categorical_feature.columns)
+    # Convertir a DataFrame
+    encoded_df = pd.DataFrame(encoded, columns=encoded_columns, index=data.index)
+    # Eliminar columnas originales
+    data = data.drop(columns=categorical_feature.columns)
+    # Añadir las nuevas columnas
+    data = pd.concat([data, encoded_df], axis=1)
+    # Mostrar resultado
+    print("Nuevas columnas creadas:")
+    for col in encoded_columns:
+        print(col)
+        
 #TODO aqui lo que haga falta para pasar de categorial a numerico
 
 def simplify_text(text_feature):
     """
-    Simplifica el texto: minúsculas, quitar puntuación, tokenizar, eliminar stopwords y stemming.
+    Simplifica el texto: minúsculas, quitar puntuación, tokenizar, eliminar stopwords y stemming(Lematizar).
     """
     global data
 
@@ -716,44 +756,6 @@ def naive_bayes():
     # Guardamos el modelo utilizando pickle
     save_model(gs)
 
-# Funciones para predecir con un modelo
-
-def load_model():
-    """
-    Carga el modelo desde el archivo 'output/modelo.pkl' y lo devuelve.
-
-    Returns:
-        model: El modelo cargado desde el archivo 'output/modelo.pkl'.
-
-    Raises:
-        Exception: Si ocurre un error al cargar el modelo.
-    """
-    try:
-        with open('output/modelo.pkl', 'rb') as file:
-            model = pickle.load(file)
-            print(Fore.GREEN+"Modelo cargado con éxito"+Fore.RESET)
-            return model
-    except Exception as e:
-        print(Fore.RED+"Error al cargar el modelo"+Fore.RESET)
-        print(e)
-        sys.exit(1)
-       
-def predict():
-    """
-    Realiza una predicción utilizando el modelo entrenado y guarda los resultados en un archivo CSV.
-
-    Parámetros:
-        Ninguno
-
-    Retorna:
-        Ninguno
-    """
-    global data
-    # Predecimos
-    prediction = model.predict(data)
-   
-    # Añadimos la prediccion al dataframe data
-    data = pd.concat([data, pd.DataFrame(prediction, columns=[args.prediction])], axis=1)
    
 # ======================= PROGRAMA PRINCIPAL =======================
 
@@ -761,10 +763,13 @@ if __name__ == "__main__":
     # Fijamos la semilla
     np.random.seed(42)
     print("=== Clasificador ===")
+
     # Manejamos la señal SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, signal_handler)
+
     # Parseamos los argumentos
     args = parse_args()
+
     # Si la carpeta output no existe la creamos
     print("\n- Creando carpeta output...")
     try:
@@ -776,17 +781,21 @@ if __name__ == "__main__":
         print(Fore.RED+"Error al crear la carpeta output"+Fore.RESET)
         print(e)
         sys.exit(1)
+
     # Cargamos los datos
     print("\n- Cargando datos...")
     data = load_data(args.file)
+
     # Descargamos los recursos necesarios de nltk
     print("\n- Descargando diccionarios...")
     nltk.download('stopwords')
     nltk.download('punkt')
     nltk.download('wordnet')
+
     # Preprocesamos los datos
     print("\n- Preprocesando datos...")
     preprocesar_datos()
+
     if args.debug:
         try:
             print("\n- Guardando datos preprocesados...")
@@ -794,56 +803,38 @@ if __name__ == "__main__":
             print(Fore.GREEN+"Datos preprocesados guardados con éxito"+Fore.RESET)
         except Exception as e:
             print(Fore.RED+"Error al guardar los datos preprocesados"+Fore.RESET)
-    if args.mode == "train":
-        # Ejecutamos el algoritmo seleccionado
-        print("\n- Ejecutando algoritmo...")
-        if args.algorithm == "kNN":
-            try:
-                kNN()
-                print(Fore.GREEN+"Algoritmo kNN ejecutado con éxito"+Fore.RESET)
-                sys.exit(0)
-            except Exception as e:
-                print(e)
-        elif args.algorithm == "decision_tree":
-            try:
-                decision_tree()
-                print(Fore.GREEN+"Algoritmo árbol de decisión ejecutado con éxito"+Fore.RESET)
-                sys.exit(0)
-            except Exception as e:
-                print(e)
-        elif args.algorithm == "random_forest":
-            try:
-                random_forest()
-                print(Fore.GREEN+"Algoritmo random forest ejecutado con éxito"+Fore.RESET)
-                sys.exit(0)
-            except Exception as e:
-                print(e)
-        elif args.algorithm == "naive_bayes":
-            try:
-                naive_bayes()
-                print(Fore.GREEN+"Algoritmo naive bayes ejecutado con éxito"+Fore.RESET)
-                sys.exit(0)
-            except Exception as e:
-                print(e)
-        else:
-            print(Fore.RED+"Algoritmo no soportado"+Fore.RESET)
-            sys.exit(1)
-    elif args.mode == "test":
-        # Cargamos el modelo
-        print("\n- Cargando modelo...")
-        model = load_model()
-        # Predecimos
-        print("\n- Prediciendo...")
+
+    
+    # Ejecutamos el algoritmo seleccionado
+    print("\n- Ejecutando algoritmo...")
+    if args.algorithm == "kNN":
         try:
-            predict()
-            print(Fore.GREEN+"Predicción realizada con éxito"+Fore.RESET)
-            # Guardamos el dataframe con la prediccion
-            data.to_csv('output/data-prediction.csv', index=False)
-            print(Fore.GREEN+"Predicción guardada con éxito"+Fore.RESET)
+            kNN()
+            print(Fore.GREEN+"Algoritmo kNN ejecutado con éxito"+Fore.RESET)
             sys.exit(0)
         except Exception as e:
             print(e)
-            sys.exit(1)
+    elif args.algorithm == "decision_tree":
+        try:
+            decision_tree()
+            print(Fore.GREEN+"Algoritmo árbol de decisión ejecutado con éxito"+Fore.RESET)
+            sys.exit(0)
+        except Exception as e:
+            print(e)
+    elif args.algorithm == "random_forest":
+        try:
+            random_forest()
+            print(Fore.GREEN+"Algoritmo random forest ejecutado con éxito"+Fore.RESET)
+            sys.exit(0)
+        except Exception as e:
+            print(e)
+    elif args.algorithm == "naive_bayes":
+        try:
+            naive_bayes()
+            print(Fore.GREEN+"Algoritmo naive bayes ejecutado con éxito"+Fore.RESET)
+            sys.exit(0)
+        except Exception as e:
+            print(e)
     else:
-        print(Fore.RED+"Modo no soportado"+Fore.RESET)
+        print(Fore.RED+"Algoritmo no soportado"+Fore.RESET)
         sys.exit(1)

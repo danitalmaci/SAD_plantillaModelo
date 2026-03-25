@@ -1,4 +1,7 @@
 {
+  "data_file": "iris.csv",
+  "algorithm": "kNN",
+  "prediction": "Especie",
   "preprocessing": {
     "unique_category_threshold": 10,
     "text_process": "tf-idf",

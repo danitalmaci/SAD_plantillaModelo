@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
  
-# ======================= PLANTILLA =======================
+# ======================= PLANTILLA - TEST =======================
 
 
 """
@@ -14,23 +14,22 @@ import sys
 import json
 import pickle
 import pandas as pd
+from colorama import Fore
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, MaxAbsScaler
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 
 
-# =========================================================
-# CARGA DE CONFIGURACIÓN
-# =========================================================
+
+# ======================= CARGA DE CONFIGURACION =======================
 
 def load_config(config_path):
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-# =========================================================
-# PREPROCESADO
-# =========================================================
+
+# ======================= PREPROCESADO =======================
 
 def apply_drop_features(data, drop_features):
     if drop_features:
@@ -188,20 +187,26 @@ def preprocess_test_data(data, config, target_column=None):
     return data, y_real
 
 
-# =========================================================
-# MODELO
-# =========================================================
+
+# ======================= MODELO =======================
 
 def load_model(model_path):
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
-    print(f"Modelo cargado desde: {model_path}")
-    return model
+    """
+    Carga el modelo desde el archivo del modelo indicado y lo devuelve.
+    """
+    try:
+        with open(model_path, 'rb') as file:
+            model = pickle.load(file)
+            print(Fore.GREEN+f"Modelo cargado con éxito desde {model_path}"+Fore.RESET)
+            return model
+    except Exception as e:
+        print(Fore.RED+"Error al cargar el modelo"+Fore.RESET)
+        print(e)
+        sys.exit(1)
 
 
-# =========================================================
-# MAIN
-# =========================================================
+
+# ======================= PROGRAMA PRINCIPAL =======================
 
 if __name__ == '__main__':
 
