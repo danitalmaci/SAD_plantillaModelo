@@ -32,7 +32,7 @@ from colorama import Fore
 
 # Sklearn
 from sklearn.naive_bayes import GaussianNB
-from sklearn.calibration import LabelEncoder
+# from sklearn.calibration import LabelEncoder
 from sklearn.metrics import f1_score, confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler, Normalizer, StandardScaler
@@ -76,7 +76,7 @@ def parse_args():
     parse = argparse.ArgumentParser(description="Practica de algoritmos de clasificación de datos.")
     parse.add_argument("-m", "--mode", help="Modo de ejecución (train o test)", required=True)
     parse.add_argument("-f", "--file", help="Fichero csv (/Path_to_file)", required=True)
-    parse.add_argument("-a", "--algorithm", help="Algoritmo a ejecutar (kNN, decision_tree o random_forest)", required=True)
+    parse.add_argument("-a", "--algorithm", help="Algoritmo a ejecutar (kNN, decision_tree, random_forest o naive_bayes)", required=True)
     parse.add_argument("-p", "--prediction", help="Columna a predecir (Nombre de la columna)", required=True)
     parse.add_argument("-e", "--estimator", help="Estimador a utilizar para elegir el mejor modelo https://scikit-learn.org/stable/modules/model_evaluation.html#scoring-parameter", required=False, default=None)
     parse.add_argument("-c", "--cpu", help="Número de CPUs a utilizar [-1 para usar todos]", required=False, default=-1, type=int)
@@ -115,6 +115,17 @@ def load_data(file):
 
 # TODO Aqui poned lo que hayais hecho
 
+def calculate_fscore(y_true, y_pred):
+    fscore_micro = f1_score(y_true, y_pred, average='micro')
+    fscore_macro = f1_score(y_true, y_pred, average='macro')
+    return fscore_micro, fscore_macro
+
+def calculate_confusion_matrix(y_true, y_pred):
+    return confusion_matrix(y_true, y_pred)
+
+def calculate_classification_report(y_true, y_pred):
+    return classification_report(y_true, y_pred)
+
 # Funciones para preprocesar los datos
 
 def select_features():
@@ -150,117 +161,115 @@ def select_features():
         print(e)
         sys.exit(1)
 
-def process_missing_values(numerical_feature, categorical_feature):
+
+
+def get_missing_config():
     """
-    Procesa los valores faltantes en los datos según la estrategia especificada en los argumentos.
+    Devuelve la configuración de tratamiento de valores perdidos.
+    """
+    return args.preprocessing.get("missing_values", {})
 
-    Args:
-        numerical_feature (DataFrame): El DataFrame que contiene las características numéricas.
-        categorical_feature (DataFrame): El DataFrame que contiene las características categóricas.
+def get_scaling_config():
+    """
+    Devuelve la configuración de escalado.
+    """
+    return args.preprocessing.get("scaling", {})
 
-    Returns:
-        None
+def get_balancing_config():
+    """
+    Devuelve la configuración de balanceo.
+    """
+    return args.preprocessing.get("balancing", {})
+
+def apply_missing_strategy(col, strategy_cfg, is_numeric=True):
+    """
+    Aplica la estrategia indicada en el JSON para los valores faltantes de una columna.
     """
     global data
 
-    print("Para imputar valores faltantes numéricos:")
-    print("Opción 1: Media")
-    print("Opción 2: Moda")
-    print("Opción 3: Mediana")
-    print("Opción 4: Valor de tu elección")
+    strategy = strategy_cfg.get("strategy", "none")
+
+    if strategy == "drop_rows":
+        data = data.dropna(subset=[col])
+        print(f"Se eliminan filas con missing en '{col}'")
+    elif strategy == "mean" and is_numeric:
+        data[col] = data[col].fillna(data[col].mean())
+        print(f"Se imputa la media en '{col}'")
+    elif strategy == "median" and is_numeric:
+        data[col] = data[col].fillna(data[col].median())
+        print(f"Se imputa la mediana en '{col}'")
+    elif strategy == "mode":
+        if not data[col].mode().empty:
+            data[col] = data[col].fillna(data[col].mode()[0])
+            print(f"Se imputa la moda en '{col}'")
+    elif strategy == "constant":
+        fill_value = strategy_cfg.get("value", 0 if is_numeric else "desconocido")
+        data[col] = data[col].fillna(fill_value)
+        print(f"Se imputa un valor constante en '{col}': {fill_value}")
+    elif strategy == "none":
+        print(f"No se aplica imputación en '{col}'")
+    else:
+        raise ValueError(f"Estrategia de missing no válida para '{col}': {strategy}")
+
+def build_scaler(method):
+    """
+    Crea el scaler correspondiente al método indicado.
+    """
+    if method == "standard":
+        return StandardScaler()
+    if method == "minmax":
+        return MinMaxScaler()
+    if method == "maxabs":
+        return MaxAbsScaler()
+    if method in ["none", None]:
+        return None
+    raise ValueError(f"Método de escalado no soportado: {method}")
+
+
+def process_missing_values(numerical_feature, categorical_feature):
+    """
+    Procesa los valores faltantes usando la configuración del JSON.
+    """
+    global data
+
+    missing_cfg = get_missing_config()
+    numeric_default = missing_cfg.get("numeric_default", {"strategy": "none"})
+    categorical_default = missing_cfg.get("categorical_default", {"strategy": "none"})
+    per_column = missing_cfg.get("per_column", {})
 
     for col in numerical_feature.columns:
         if data[col].isnull().sum() > 0:
-            eliminar = input(f"El atributo {col} tiene valores faltantes. ¿Quieres eliminar las filas que los contienen? (s/n): ")
-
-            if eliminar.lower() == "s":
-                data = data.dropna(subset=[col])
-            else:
-                num2 = int(input(f"¿Con qué dato quieres sustituir los valores faltantes del atributo {col}? "))
-
-                if num2 == 1:
-                    data[col] = data[col].fillna(data[col].mean())
-
-                elif num2 == 2:
-                    data[col] = data[col].fillna(data[col].mode()[0])
-
-                elif num2 == 3:
-                    data[col] = data[col].fillna(data[col].median())
-
-                elif num2 == 4:
-                    valor = float(input(f"Introduce el valor para {col}: "))
-                    data[col] = data[col].fillna(valor)
-
-                else:
-                    print("Opción no válida")
-
-    print("Para imputar valores faltantes categoriales:")
-    print("Opción 1: Moda")
-    print("Opción 2: Valor de tu elección")
+            col_cfg = per_column.get(col, numeric_default)
+            apply_missing_strategy(col, col_cfg, is_numeric=True)
 
     for col in categorical_feature.columns:
         if data[col].isnull().sum() > 0:
-            eliminar = input(f"El atributo {col} tiene valores faltantes. ¿Quieres eliminar las filas que los contienen? (s/n): ")
-
-            if eliminar.lower() == "s":
-                data = data.dropna(subset=[col])
-            else:
-                num3 = int(input(f"¿Con qué dato quieres sustituir los valores faltantes del atributo {col}? "))
-
-                if num3 == 1:
-                    data[col] = data[col].fillna(data[col].mode()[0])
-
-                elif num3 == 2:
-                    valor = input(f"Introduce el valor para {col}: ")
-                    data[col] = data[col].fillna(valor)
-
-                else:
-                    print("Opción no válida")#TODO aqui lo que hayais hecho
+            col_cfg = per_column.get(col, categorical_default)
+            apply_missing_strategy(col, col_cfg, is_numeric=False)
 
 #TODO aqui preprocesar
 
+
 def reescaler(numerical_feature):
     """
-    Rescala las características numéricas en el conjunto de datos utilizando diferentes métodos de escala.
-
-    Args:
-        numerical_feature (DataFrame): El dataframe que contiene las características numéricas.
-
-    Returns:
-        None
-
-    Raises:
-        Exception: Si hay un error al reescalar los datos.
-
+    Reescala las características numéricas usando la configuración del JSON.
     """
     global data
 
-    print("Para el reescalado de variables numéricas:")
-    print("Opción 1: Z-score (StandardScaler)")
-    print("Opción 2: Min-Max (MinMaxScaler)")
-    print("Opción 3: MaxScaler")
-    print("Opción 4: No escalar")
+    scaling_cfg = get_scaling_config()
+    default_method = scaling_cfg.get("default", "none")
+    per_column = scaling_cfg.get("per_column", {})
 
     for col in numerical_feature.columns:
-        opcion = int(input(f"¿Cómo quieres escalar el atributo {col}? "))
+        method = per_column.get(col, default_method)
+        scaler = build_scaler(method)
 
-        if opcion == 1:
-            scaler = StandardScaler()
-            data[col] = scaler.fit_transform(data[[col]])
-
-        elif opcion == 2:
-            scaler = MinMaxScaler()
-            data[col] = scaler.fit_transform(data[[col]])
-
-        elif opcion == 3:
-            scaler = MaxAbsScaler()
-            data[col] = scaler.fit_transform(data[[col]])
-
-        elif opcion == 4:
+        if scaler is None:
             print(f"No se escala la columna {col}")
-
         else:
-            print("Opción no válida")
+            data[col] = scaler.fit_transform(data[[col]])
+            print(f"Columna {col} escalada con {method}")
+
 #TODO aqui reescalar
 
 def cat2num(categorical_feature):
@@ -338,6 +347,7 @@ def process_text(text_feature):
                 bow_matrix = bow_vecotirizer.fit_transform(text_data)
                 text_features_df = pd.DataFrame(bow_matrix.toarray(), columns=bow_vecotirizer.get_feature_names_out())
                 data = pd.concat([data, text_features_df], axis=1)
+                data.drop(text_feature.columns, axis=1, inplace=True)
                 print(Fore.GREEN+"Texto tratado con éxito usando BOW"+Fore.RESET)
             else:
                 print(Fore.YELLOW+"No se están tratando los textos"+Fore.RESET)
@@ -348,46 +358,38 @@ def process_text(text_feature):
         print(e)
         sys.exit(1)
 
+
 def over_under_sampling():
     """
-    Realiza oversampling o undersampling en los datos según la estrategia especificada.
+    Realiza oversampling o undersampling en los datos según la configuración del JSON.
     """
     global data
 
-    print("Balanceo de clases:")
-    print("Opción 1: Oversampling (RandomOverSampler)")
-    print("Opción 2: Undersampling (RandomUnderSampler)")
-    print("Opción 3: No aplicar balanceo")
+    balancing_cfg = get_balancing_config()
+    method = balancing_cfg.get("method", "none")
 
-    opcion = int(input("Selecciona una opción: "))
-
-    if opcion == 3:
+    if method == "none":
         print("No se aplica balanceo")
         return
 
-    # Separar X e y
     X = data.drop(columns=[args.prediction])
     y = data[args.prediction]
+    random_state = balancing_cfg.get("random_state", 42)
 
-    if opcion == 1:
-        sampler = RandomOverSampler(random_state=42)
+    if method == "oversampling":
+        sampler = RandomOverSampler(random_state=random_state)
         print("Aplicando Oversampling...")
-
-    elif opcion == 2:
-        sampler = RandomUnderSampler(random_state=42)
+    elif method == "undersampling":
+        sampler = RandomUnderSampler(random_state=random_state)
         print("Aplicando Undersampling...")
-
     else:
-        print("Opción no válida")
-        return
+        raise ValueError(f"Método de balanceo no soportado: {method}")
 
-    # Aplicar sampling
     X_resampled, y_resampled = sampler.fit_resample(X, y)
-
-    # Reconstruir el dataset
     data = pd.concat([X_resampled, y_resampled], axis=1)
 
     print("Balanceo aplicado correctamente")
+
  
   #TODO aqui
 
@@ -401,7 +403,7 @@ def drop_features():
     """
     global data
     try:
-        data = data.drop(columns=args.preprocessing["drop_features"])
+        data = data.drop(columns=args.preprocessing.get("drop_features", []), errors="ignore")
         print(Fore.GREEN+"Columnas eliminadas con éxito"+Fore.RESET)
     except Exception as e:
         print(Fore.RED+"Error al eliminar columnas"+Fore.RESET)
@@ -550,43 +552,32 @@ def kNN():
     :type data: pandas.DataFrame
     :return: Tupla con la clasificación de los datos.
     :rtype: tuple
-    """gs = GridSearchCV(
-            DecisionTreeClassifier(),
-            args.decision_tree,
-            cv=5,
-            n_jobs=args.cpu,
-            scoring=args.estimator
-        )
-
-        start_time = time.time()
-        gs.fit(x_train, y_train)
-        end_time = time.time()
-
-        # Barra de progreso (igual que en kNN)
-        for i in range(100):
-            time.sleep(random.uniform(0.06, 0.15))
-            pbar.update(random.random()*2)
-        pbar.n = 100
-        pbar.last_print_n = 100
-        pbar.update(0)
+    """
     # Dividimos los datos en entrenamiento y dev
     x_train, x_dev, y_train, y_dev = divide_data()
    
     # Hacemos un barrido de hiperparametros
-
     with tqdm(total=100, desc='Procesando kNN', unit='iter', leave=True) as pbar:
-        gs = GridSearchCV(KNeighborsClassifier(), args.kNN, cv=5, n_jobs=args.cpu, scoring=args.estimator)
+        gs = GridSearchCV(
+            KNeighborsClassifier(),
+            args.kNN,
+            cv=5,
+            n_jobs=args.cpu,
+            scoring=args.estimator
+        )
         start_time = time.time()
         gs.fit(x_train, y_train)
         end_time = time.time()
+
         for i in range(100):
-            time.sleep(random.uniform(0.06, 0.15))  # Esperamos un tiempo aleatorio
-            pbar.update(random.random()*2)  # Actualizamos la barra con un valor aleatorio
+            time.sleep(random.uniform(0.06, 0.15))
+            pbar.update(random.random() * 2)
         pbar.n = 100
         pbar.last_print_n = 100
         pbar.update(0)
+
     execution_time = end_time - start_time
-    print("Tiempo de ejecución:"+Fore.MAGENTA, execution_time,Fore.RESET+ "segundos")
+    print("Tiempo de ejecución:" + Fore.MAGENTA, execution_time, Fore.RESET + " segundos")
    
     # Mostramos los resultados
     mostrar_resultados(gs, x_dev, y_dev)
@@ -660,8 +651,8 @@ def random_forest():
         #TODO Llamar al decision trees
         #gs = GridSearchCV(
         gs = GridSearchCV(
-            DecisionTreeClassifier(),
-            args.decision_tree,
+            RandomForestClassifier(),
+            args.random_forest,
             cv=5,
             n_jobs=args.cpu,
             scoring=args.estimator
@@ -724,6 +715,7 @@ def naive_bayes():
     
     # Guardamos el modelo utilizando pickle
     save_model(gs)
+
 # Funciones para predecir con un modelo
 
 def load_model():
@@ -826,6 +818,13 @@ if __name__ == "__main__":
                 sys.exit(0)
             except Exception as e:
                 print(e)
+        elif args.algorithm == "naive_bayes":
+            try:
+                naive_bayes()
+                print(Fore.GREEN+"Algoritmo naive bayes ejecutado con éxito"+Fore.RESET)
+                sys.exit(0)
+            except Exception as e:
+                print(e)
         else:
             print(Fore.RED+"Algoritmo no soportado"+Fore.RESET)
             sys.exit(1)
@@ -847,4 +846,4 @@ if __name__ == "__main__":
             sys.exit(1)
     else:
         print(Fore.RED+"Modo no soportado"+Fore.RESET)
-        sys.exit(1)=
+        sys.exit(1)

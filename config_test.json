@@ -1,0 +1,29 @@
+{
+  "input": {
+    "file": "iris.csv",
+    "model_path": "output/modelo.pkl",
+    "target": "Especie"
+  },
+  "preprocessing": {
+    "drop_features": [],
+    "missing_values": {
+      "numeric_default": {
+        "strategy": "median"
+      },
+      "categorical_default": {
+        "strategy": "mode"
+      },
+      "per_column": {}
+    },
+    "scaling": {
+      "default": "standard",
+      "per_column": {}
+    },
+    "balancing": {
+      "method": "none"
+    }
+  },
+  "output": {
+    "predictions_file": "output/predicciones.csv"
+  }
+}
