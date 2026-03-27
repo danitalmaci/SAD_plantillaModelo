@@ -45,14 +45,12 @@ Ambas se gestionan mediante scripts de terminal que aceptan archivos de configur
 
 1. Entrenamiento de Modelos (train.py) + config_train.json
 
-Comando de ejecución:
-
+* **Comando de ejecución:**
   ```bash
-	python train.py -j config_train.json 
+  python train.py -j config_train.json 
 
 2. Testeo y Predicción (test.py) + config_test.json
 
-Comando de ejecución:
-
+* **Comando de ejecución:**
   ```bash
-	python test.py -j config_test.json
+  python train.py -j config_test.json 
