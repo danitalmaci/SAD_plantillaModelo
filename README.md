@@ -17,8 +17,42 @@ Los algoritmos implementados son los siguientes:
 
 ---
 
+## Requisitos de Software
+
+Para asegurar el correcto funcionamiento del pipeline, es necesario utilizar la siguiente versión de Python y contar con las dependencias instaladas:
+
+* **Versión de Python:** `3.13.12`
+* **Instalación de dependencias:**
+  ```bash
+  pip install -r requirements.txt
+  
+---
+
 ## Contenido del Proyecto
 
-
+* **`train.py`**: Script principal para el entrenamiento y optimización de modelos.
+* **`test.py`**: Script para la evaluación de modelos y generación de predicciones.
+* **`config_train.json`**: Plantilla de configuración para la fase de entrenamiento.
+* **`config_test.json`**: Plantilla de configuración para la fase de testeo.
+* **`requirements.txt`**: Lista de librerías de Python necesarias (pandas, scikit-learn, etc.).
 
 ---
+
+## Guía de uso
+
+El proyecto se divide en dos fases principales: entrenamiento y testeo. 
+Ambas se gestionan mediante scripts de terminal que aceptan archivos de configuración en formato JSON.
+
+1. Entrenamiento de Modelos (train.py) + config_train.json
+
+Comando de ejecución:
+
+  ```bash
+	python train.py -j config_train.json 
+
+2. Testeo y Predicción (test.py) + config_test.json
+
+Comando de ejecución:
+
+  ```bash
+	python test.py -j config_test.json

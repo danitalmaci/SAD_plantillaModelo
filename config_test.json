@@ -1,7 +1,7 @@
 {
   "input": {
     "file": "iris.csv",
-    "model_path": "output/modelo.pkl",
+    "model_path": "output/modelo_decision_tree.pkl",
     "target": "Especie"
   },
   "output": {

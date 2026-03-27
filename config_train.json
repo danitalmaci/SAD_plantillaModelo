@@ -1,6 +1,6 @@
 {
   "data_file": "iris.csv",
-  "algorithm": "kNN",
+  "algorithm": "decision_tree",
   "prediction": "Especie",
   "preprocessing": {
     "unique_category_threshold": 10,

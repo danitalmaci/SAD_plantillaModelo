@@ -11,6 +11,8 @@ import sys
 import json
 import pickle
 import string
+import argparse
+import signal
 import os
 import pandas as pd
 from colorama import Fore
@@ -27,10 +29,45 @@ from nltk.tokenize import word_tokenize
 
 # ======================= CARGA DE CONFIGURACION =======================
 
-def load_config(config_path):
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+def signal_handler(sig, frame): 
+    """
+    Función para manejar la señal SIGINT (Ctrl+C)
+    :param sig: Señal
+    :param frame: Frame
+    """
 
+    print("\nSaliendo del programa...") 
+    sys.exit(0)  
+
+def parse_args(): 
+    """
+    Función para parsear los argumentos de entrada
+    """
+
+    parse = argparse.ArgumentParser(description="Practica de algoritmos de clasificación de datos.")
+
+    # Parametros necesarios
+    parse.add_argument("-j", "--json", help="Archivo de configuración JSON", required=True)
+    # Parametros opcionales
+    parse.add_argument("-e", "--estimator", help="Estimador a utilizar para elegir el mejor modelo https://scikit-learn.org/stable/modules/model_evaluation.html#scoring-parameter", required=False, default=None)
+    parse.add_argument("-c", "--cpu", help="Número de CPUs a utilizar [-1 para usar todos]", required=False, default=-1, type=int)
+    parse.add_argument("-v", "--verbose", help="Muestra las metricas por la terminal", required=False, default=False, action="store_true")
+    
+    args = parse.parse_args()
+    # Lee los argumentos realmente escritos en la terminal y los guarda en args.
+
+    try:  
+        with open(args.json, 'r') as json_file:  # Abre el archivo JSON indicado en modo lectura.
+            config = json.load(json_file)  # Carga el contenido del JSON como diccionario Python.
+
+        for key, value in config.items():  # Recorre todas las claves y valores del JSON.
+            setattr(args, key, value)  # Añade cada clave del JSON como atributo dentro de args.
+
+    except FileNotFoundError: 
+        print(f"Error: No se encontró el archivo {args.json}")  
+        sys.exit(1)  
+
+    return args 
 
 # ======================= MODELO =======================
 
@@ -368,14 +405,14 @@ def calculate_metrics(y_real, predictions, config):
 # ======================= PROGRAMA PRINCIPAL =======================
 
 if __name__ == '__main__':
+    print("=== Clasificador === ")
 
-    if len(sys.argv) != 2:
-        print("Uso: python test.py config_test.json")
-        sys.exit(1)
+    signal.signal(signal.SIGINT, signal_handler)
+    args = parse_args()
+   
+    config = vars(args) 
 
-    config_path = sys.argv[1]
-    config = load_config(config_path)
-
+    # 3. Acceder a los datos a través de args o config
     input_cfg = config.get("input", {})
     output_cfg = config.get("output", {})
 
@@ -393,12 +430,12 @@ if __name__ == '__main__':
         print("Error: falta 'input.model_path' en el JSON")
         sys.exit(1)
 
-    print("\n=== TEST ===")
-    print("Fichero de entrada:", file_path)
-    print("Modelo:", model_path)
-    print("Target:", target_column if target_column else "(no especificado)")
+    print("\n=== TEST === ")
+    print("Fichero de entrada: ", file_path)
+    print("Modelo: ", model_path)
+    print("Target: ", target_column if target_column else "(no especificado) ")
 
-    print("\n- Descargando diccionarios...")
+    print("\n- Descargando diccionarios... ")
     nltk.download('stopwords')
     nltk.download('punkt')
     nltk.download('wordnet')
@@ -407,14 +444,15 @@ if __name__ == '__main__':
         os.makedirs("output")
 
     data_original = pd.read_csv(file_path)
-    print("\nDatos cargados:")
+    print("\nDatos cargados: ")
     print(data_original.head())
 
     model = load_model(model_path)
 
+    # 4. Pasar config (diccionario) a las funciones de preprocesado
     X_test, y_real = preprocess_test_data(data_original.copy(), config, model, target_column)
 
-    print("\n- Realizando predicciones...")
+    print("\n- Realizando predicciones... ")
     predictions = model.predict(X_test)
 
     results = data_original.copy()
@@ -424,22 +462,22 @@ if __name__ == '__main__':
 
     results[target_column + "_PRED"] = predictions
 
-    print(Fore.GREEN + "Predicción realizada con éxito" + Fore.RESET)
+    print(Fore.GREEN + "Predicción realizada con éxito " + Fore.RESET)
 
     if y_real is not None:
-        print("\n=== MÉTRICAS ===")
+        print("\n=== MÉTRICAS === ")
         try:
             f1, precision, recall = calculate_metrics(y_real, predictions, config)
-
-            print("F1:", f1)
-            print("Precision:", precision)
-            print("Recall:", recall)
-            print("\nClassification report:")
+            
+            print("F1: ", f1)
+            print("Precision: ", precision)
+            print("Recall: ", recall)
+            print("\nClassification report: ")
             print(classification_report(y_real, predictions))
-            print("Matriz de confusión:")
+            print("Matriz de confusión: ")
             print(confusion_matrix(y_real, predictions))
         except Exception as e:
-            print("No se han podido calcular las métricas:", e)
+            print("No se han podido calcular las métricas: ", e)
 
     results.to_csv(predictions_file, index=False)
-    print(Fore.GREEN + f"Predicciones guardadas en: {predictions_file}" + Fore.RESET)
+    print(Fore.GREEN + f"Predicciones guardadas en: {predictions_file} " + Fore.RESET)
