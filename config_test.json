@@ -6,35 +6,5 @@
   },
   "output": {
     "predictions_file": "output/predicciones.csv"
-  },
-  "preprocessing": {
-    "unique_category_threshold": 10,
-    "text_process": "tf-idf",
-    "drop_features": [],
-    "missing_values": {
-      "per_column": {
-        "Largo de sepalo": {
-          "strategy": "mean"
-        },
-        "Ancho de sepalo": {
-          "strategy": "mean"
-        },
-        "Largo de petalo": {
-          "strategy": "median"
-        },
-        "Ancho de petalo": {
-          "strategy": "median"
-        }
-      }
-    },
-    "scaling": {
-      "default": "standard",
-      "per_column": {
-        "Largo de sepalo": "standard",
-        "Ancho de sepalo": "standard",
-        "Largo de petalo": "minmax",
-        "Ancho de petalo": "minmax"
-      }
-    }
   }
 }

@@ -64,6 +64,7 @@ from imblearn.over_sampling import RandomOverSampler  # Para hacer oversampling.
 
 # ======================= PROGRAMA =======================  # Separador decorativo principal.
 
+package = {}
 
 # ----------------- Funciones auxiliares -----------------  # Separador de funciones auxiliares.
 
@@ -261,6 +262,7 @@ def select_features(df):
     """
     Separa las características del conjunto de datos en características numéricas, de texto y categóricas.
     """
+    global package
     try:  
         numerical_feature = df.select_dtypes(include=['int64', 'float64']).copy()
         # Selecciona columnas numéricas enteras o decimales y hace una copia.
@@ -286,6 +288,11 @@ def select_features(df):
 
             print(Fore.MAGENTA+"> Columnas categóricas:\n"+Fore.RESET, categorical_feature.columns)
             # Imprime las columnas categóricas.
+
+        package["numerical_columns"] = list(numerical_feature.columns)
+        package["categorical_columns"] = list(categorical_feature.columns)
+        package["text_columns"] = list(text_feature.columns)
+        package["unique_category_threshold"] = args.preprocessing["unique_category_threshold"]
 
         return numerical_feature, text_feature, categorical_feature
 
@@ -424,6 +431,7 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
     """
     Procesa los valores faltantes en train y dev usando estadísticas calculadas SOLO con train.
     """
+    global package
     
     missing_cfg = get_missing_config()
     # Lee la configuración de missing values.
@@ -433,6 +441,8 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
 
     all_columns = list(numerical_feature.columns) + list(categorical_feature.columns)
     # Junta en una sola lista las columnas numéricas y categóricas.
+
+    package["missing_values_info"] = {}
 
     for col in all_columns:  # Recorre cada columna.
         if col not in per_column:  # Si esa columna no tiene configuración específica...
@@ -447,6 +457,10 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
 
         is_numeric = col in numerical_feature.columns
         # Comprueba si la columna es numérica.
+
+        package["missing_values_info"][col] = {
+            "strategy": strategy
+        }
 
         if strategy == "drop_rows":  
             train_mask = x_train[col].notna()
@@ -470,6 +484,7 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
             # Rellena los NaN de train con la media.
             x_dev[col] = x_dev[col].fillna(fill_value)
             # Rellena los NaN de dev con la media calculada en train.
+            package["missing_values_info"][col]["fill_value"] = fill_value
             print(f"Se imputa la media en '{col}'")
 
         elif strategy == "median" and is_numeric:  
@@ -479,6 +494,7 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
             # Rellena train.
             x_dev[col] = x_dev[col].fillna(fill_value)
             # Rellena dev con el mismo valor.
+            package["missing_values_info"][col]["fill_value"] = fill_value
             print(f"Se imputa la mediana en '{col}'")
 
         elif strategy == "mode":  
@@ -490,6 +506,7 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
                 # Rellena train.
                 x_dev[col] = x_dev[col].fillna(fill_value)
                 # Rellena dev con el mismo valor.
+                package["missing_values_info"][col]["fill_value"] = fill_value
                 print(f"Se imputa la moda en '{col}'")
 
         elif strategy == "constant":  
@@ -500,6 +517,7 @@ def process_missing_values(x_train, x_dev, y_train, y_dev, numerical_feature, ca
             # Rellena train.
             x_dev[col] = x_dev[col].fillna(fill_value)
             # Rellena dev.
+            package["missing_values_info"][col]["fill_value"] = fill_value
             print(f"Se imputa un valor constante en '{col}': {fill_value}")
 
         elif strategy == "none": 
@@ -515,6 +533,7 @@ def simplify_text(x_train, x_dev, text_feature):
     """
     Simplifica el texto en train y dev.
     """
+    global package
     print("Simplificando texto...")
   
     stop_words = set(stopwords.words('english'))
@@ -522,6 +541,14 @@ def simplify_text(x_train, x_dev, text_feature):
 
     stemmer = PorterStemmer()
     # Crea el objeto para hacer stemming.
+
+    package["text_simplification"] = {
+        "language": "english",
+        "lowercase": True,
+        "remove_punctuation": True,
+        "remove_stopwords": True,
+        "stemming": True
+    }
 
     def procesar_texto(texto):  # Función interna para procesar una cadena de texto.
         tokens = word_tokenize(texto)
@@ -560,7 +587,10 @@ def cat2num(x_train, x_dev, categorical_feature):
     """
     Convierte las características categóricas en características numéricas utilizando One-Hot Encoding.
     """
+    global package
     if categorical_feature.columns.size == 0:  # Si no hay columnas categóricas...
+        package["categorical_encoder"] = None
+        package["encoded_categorical_columns"] = []
         return x_train, x_dev
         # Devuelve los datos tal cual.
 
@@ -595,6 +625,9 @@ def cat2num(x_train, x_dev, categorical_feature):
     for col in encoded_columns:  # Recorre cada nueva columna creada.
         print(col)  # La imprime.
 
+    package["categorical_encoder"] = encoder
+    package["encoded_categorical_columns"] = list(encoded_columns)
+
     return x_train, x_dev
     # Devuelve train y dev ya transformados.
 
@@ -603,6 +636,7 @@ def reescaler(x_train, x_dev, numerical_feature):
     Reescala las características numéricas usando la configuración del JSON.
     El scaler se ajusta con train y se aplica a train y dev.
     """
+    global package
     scaling_cfg = get_scaling_config()
     # Obtiene configuración de escalado.
 
@@ -611,6 +645,12 @@ def reescaler(x_train, x_dev, numerical_feature):
 
     per_column = scaling_cfg.get("per_column", {})
     # Métodos específicos para columnas concretas.
+
+    package["scalers"] = {}
+    package["scaling_config"] = {
+        "default": default_method,
+        "per_column": per_column
+    }
 
     for col in numerical_feature.columns:  # Recorre todas las columnas numéricas.
         if col not in x_train.columns:  # Si esa columna ya no está...
@@ -625,6 +665,7 @@ def reescaler(x_train, x_dev, numerical_feature):
 
         if scaler is None:
             print(f"No se escala la columna {col}")
+            package["scalers"][col] = None
 
         else:  
             x_train[col] = scaler.fit_transform(x_train[[col]])
@@ -632,6 +673,8 @@ def reescaler(x_train, x_dev, numerical_feature):
 
             x_dev[col] = scaler.transform(x_dev[[col]])
             # Usa el mismo scaler para transformar dev.
+
+            package["scalers"][col] = scaler
 
             print(f"Columna {col} escalada con {method}")
 
@@ -643,6 +686,7 @@ def process_text(x_train, x_dev, text_feature):  # Función para vectorizar text
     Procesa las características de texto utilizando TF-IDF o BOW.
     El vectorizador se ajusta con train y se aplica a train y dev.
     """
+    global package
     try:  
         if text_feature.columns.size > 0:  
             text_train = x_train[text_feature.columns].apply(lambda x: ' '.join(x.astype(str)), axis=1)
@@ -679,6 +723,11 @@ def process_text(x_train, x_dev, text_feature):  # Función para vectorizar text
                 # Elimina las columnas de texto originales de train.
                 x_dev.drop(text_feature.columns, axis=1, inplace=True)
                 # Elimina las columnas de texto originales de dev.
+
+                package["text_vectorizer"] = tfidf_vectorizer
+                package["text_vectorizer_type"] = "tf-idf"
+                package["text_vectorized_columns"] = list(tfidf_vectorizer.get_feature_names_out())
+
                 print(Fore.GREEN+"Texto tratado con éxito usando TF-IDF"+Fore.RESET)
 
 
@@ -710,12 +759,23 @@ def process_text(x_train, x_dev, text_feature):  # Función para vectorizar text
                 # Elimina texto original de train.
                 x_dev.drop(text_feature.columns, axis=1, inplace=True)
                 # Elimina texto original de dev.
+
+                package["text_vectorizer"] = bow_vectorizer
+                package["text_vectorizer_type"] = "bow"
+                package["text_vectorized_columns"] = list(bow_vectorizer.get_feature_names_out())
+
                 print(Fore.GREEN+"Texto tratado con éxito usando BOW"+Fore.RESET)
                 # Informa del éxito.
 
             else:  
+                package["text_vectorizer"] = None
+                package["text_vectorizer_type"] = "none"
+                package["text_vectorized_columns"] = []
                 print(Fore.YELLOW+"No se están tratando los textos"+Fore.RESET)
         else:  
+            package["text_vectorizer"] = None
+            package["text_vectorizer_type"] = "none"
+            package["text_vectorized_columns"] = []
             print(Fore.YELLOW+"No se han encontrado columnas de texto a procesar"+Fore.RESET)
 
         return x_train, x_dev
@@ -731,6 +791,7 @@ def drop_features(x_train, x_dev):
     """
     Elimina las columnas especificadas del conjunto de datos.
     """
+    global package
     try:  
         features_to_drop = args.preprocessing.get("drop_features", [])
         # Lee del JSON qué columnas hay que eliminar.
@@ -738,6 +799,8 @@ def drop_features(x_train, x_dev):
         # Elimina esas columnas de train. Si alguna no existe, la ignora.
         x_dev = x_dev.drop(columns=features_to_drop, errors="ignore")
         # Elimina esas columnas de dev.
+
+        package["drop_features"] = features_to_drop
 
         print(Fore.GREEN+"Columnas eliminadas con éxito"+Fore.RESET)
 
@@ -775,6 +838,7 @@ def preprocesar_datos(x_train, x_dev, y_train, y_dev):
     """
     Preprocesa train y dev después del split.
     """
+    global package
     numerical_feature, text_feature, categorical_feature = select_features(x_train)
     # Separa las columnas de x_train en numéricas, texto y categóricas.
 
@@ -797,6 +861,11 @@ def preprocesar_datos(x_train, x_dev, y_train, y_dev):
 
     x_train, x_dev = drop_features(x_train, x_dev)
     # Elimina columnas indicadas en el JSON.
+
+    package["final_feature_columns"] = list(x_train.columns)
+    package["prediction_column"] = args.prediction
+    package["algorithm"] = args.algorithm
+    package["preprocessing_config"] = args.preprocessing
 
     return x_train, x_dev, y_train, y_dev
     # Devuelve todo ya preprocesado.
@@ -852,13 +921,16 @@ def save_model(gs, algorithm_name):  # Función para guardar el modelo y resulta
     """
     Guarda el modelo y los resultados de la búsqueda de hiperparámetros en archivos.
     """
+    global package
     try:  
+
+        package["model"] = gs
 
         filename = f'output/modelo_{algorithm_name}.pkl'
         with open(filename, 'wb') as file:
             # Abre el archivo donde se guardará el modelo en binario escritura.
-            pickle.dump(gs, file)
-            # Guarda el objeto gs en ese archivo.
+            pickle.dump(package, file)
+            # Guarda el paquete completo en ese archivo.
 
             print(Fore.CYAN+"Modelo guardado con éxito"+Fore.RESET)
 

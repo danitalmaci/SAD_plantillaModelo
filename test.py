@@ -77,9 +77,9 @@ def load_model(model_path):
     """
     try:
         with open(model_path, 'rb') as file:
-            model = pickle.load(file)
+            package = pickle.load(file)
             print(Fore.GREEN + f"Modelo cargado con éxito desde {model_path}" + Fore.RESET)
-            return model
+            return package
     except Exception as e:
         print(Fore.RED + "Error al cargar el modelo" + Fore.RESET)
         print(e)
@@ -108,17 +108,18 @@ def build_scaler(method):
         return None
     raise ValueError(f"Método de escalado no soportado: {method}")
 
-def select_features(df, config):
+def select_features(df, config, package):
     """
     Separa las características del conjunto de datos en numéricas, de texto y categóricas.
     """
     try:
-        numerical_feature = df.select_dtypes(include=['int64', 'float64']).copy()
+        numerical_columns = package.get("numerical_columns", [])
+        categorical_columns = package.get("categorical_columns", [])
+        text_columns = package.get("text_columns", [])
 
-        categorical_feature = df.select_dtypes(include='object').copy()
-        categorical_feature = categorical_feature.loc[:, categorical_feature.nunique() <= config["preprocessing"]["unique_category_threshold"]]
-
-        text_feature = df.select_dtypes(include='object').drop(columns=categorical_feature.columns, errors='ignore').copy()
+        numerical_feature = df[[col for col in numerical_columns if col in df.columns]].copy()
+        categorical_feature = df[[col for col in categorical_columns if col in df.columns]].copy()
+        text_feature = df[[col for col in text_columns if col in df.columns]].copy()
 
         print(Fore.GREEN + "Datos separados con éxito" + Fore.RESET)
         print("Columnas numéricas:", list(numerical_feature.columns))
@@ -135,36 +136,24 @@ def select_features(df, config):
 
 # ======================= PREPROCESADO =======================
 
-def process_missing_values(data, numerical_feature, categorical_feature, config):
+def process_missing_values(data, numerical_feature, categorical_feature, config, package):
     """
-    Procesa los valores faltantes usando SOLO la configuración columna a columna del JSON.
+    Procesa los valores faltantes usando los valores aprendidos en train.
     """
-    missing_cfg = get_missing_config(config)
-    per_column = missing_cfg.get("per_column", {})
+    missing_info = package.get("missing_values_info", {})
 
     for col in numerical_feature.columns:
         if col in data.columns and data[col].isnull().sum() > 0:
-            if col in per_column:
-                strategy_cfg = per_column[col]
-                strategy = strategy_cfg.get("strategy", "none")
+            if col in missing_info:
+                strategy = missing_info[col].get("strategy", "none")
 
                 if strategy == "drop_rows":
                     data = data.dropna(subset=[col])
                     print(f"Se eliminan filas con missing en '{col}'")
-                elif strategy == "mean":
-                    data[col] = data[col].fillna(data[col].mean())
-                    print(f"Se imputa la media en '{col}'")
-                elif strategy == "median":
-                    data[col] = data[col].fillna(data[col].median())
-                    print(f"Se imputa la mediana en '{col}'")
-                elif strategy == "mode":
-                    if not data[col].mode().empty:
-                        data[col] = data[col].fillna(data[col].mode()[0])
-                        print(f"Se imputa la moda en '{col}'")
-                elif strategy == "constant":
-                    fill_value = strategy_cfg.get("value", 0)
+                elif strategy in ["mean", "median", "mode", "constant"]:
+                    fill_value = missing_info[col].get("fill_value", None)
                     data[col] = data[col].fillna(fill_value)
-                    print(f"Se imputa un valor constante en '{col}': {fill_value}")
+                    print(f"Se imputa en '{col}' el valor aprendido en train: {fill_value}")
                 elif strategy == "none":
                     print(f"No se aplica imputación en '{col}'")
             else:
@@ -172,21 +161,16 @@ def process_missing_values(data, numerical_feature, categorical_feature, config)
 
     for col in categorical_feature.columns:
         if col in data.columns and data[col].isnull().sum() > 0:
-            if col in per_column:
-                strategy_cfg = per_column[col]
-                strategy = strategy_cfg.get("strategy", "none")
+            if col in missing_info:
+                strategy = missing_info[col].get("strategy", "none")
 
                 if strategy == "drop_rows":
                     data = data.dropna(subset=[col])
                     print(f"Se eliminan filas con missing en '{col}'")
-                elif strategy == "mode":
-                    if not data[col].mode().empty:
-                        data[col] = data[col].fillna(data[col].mode()[0])
-                        print(f"Se imputa la moda en '{col}'")
-                elif strategy == "constant":
-                    fill_value = strategy_cfg.get("value", "desconocido")
+                elif strategy in ["mode", "constant", "mean", "median"]:
+                    fill_value = missing_info[col].get("fill_value", None)
                     data[col] = data[col].fillna(fill_value)
-                    print(f"Se imputa un valor constante en '{col}': {fill_value}")
+                    print(f"Se imputa en '{col}' el valor aprendido en train: {fill_value}")
                 elif strategy == "none":
                     print(f"No se aplica imputación en '{col}'")
             else:
@@ -219,7 +203,7 @@ def simplify_text(data, text_feature):
 
     return data
 
-def cat2num(data, categorical_feature):
+def cat2num(data, categorical_feature, package):
     """
     Convierte las variables categóricas en numéricas con One-Hot Encoding.
     """
@@ -228,8 +212,12 @@ def cat2num(data, categorical_feature):
 
     print("Conversión de variables categóricas a numéricas (One-Hot Encoding)")
 
-    encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
-    encoded = encoder.fit_transform(data[categorical_feature.columns])
+    encoder = package.get("categorical_encoder", None)
+
+    if encoder is None:
+        return data
+
+    encoded = encoder.transform(data[categorical_feature.columns])
 
     encoded_columns = encoder.get_feature_names_out(categorical_feature.columns)
     encoded_df = pd.DataFrame(encoded, columns=encoded_columns, index=data.index)
@@ -243,30 +231,27 @@ def cat2num(data, categorical_feature):
 
     return data
 
-def reescaler(data, numerical_feature, config):
+def reescaler(data, numerical_feature, config, package):
     """
-    Reescala las características numéricas usando la configuración del JSON.
+    Reescala las características numéricas usando los scalers aprendidos en train.
     """
-    scaling_cfg = get_scaling_config(config)
-    default_method = scaling_cfg.get("default", "none")
-    per_column = scaling_cfg.get("per_column", {})
+    scalers = package.get("scalers", {})
 
     for col in numerical_feature.columns:
         if col not in data.columns:
             continue
 
-        method = per_column.get(col, default_method)
-        scaler = build_scaler(method)
+        scaler = scalers.get(col, None)
 
         if scaler is None:
             print(f"No se escala la columna {col}")
         else:
-            data[col] = scaler.fit_transform(data[[col]])
-            print(f"Columna {col} escalada con {method}")
+            data[col] = scaler.transform(data[[col]])
+            print(f"Columna {col} escalada con el scaler aprendido en train")
 
     return data
 
-def process_text(data, text_feature, config):
+def process_text(data, text_feature, config, package):
     """
     Procesa las características de texto utilizando TF-IDF o BOW.
     """
@@ -274,13 +259,15 @@ def process_text(data, text_feature, config):
         if text_feature.columns.size > 0:
             text_data = data[text_feature.columns].apply(lambda x: ' '.join(x.astype(str)), axis=1)
 
-            if config["preprocessing"]["text_process"] == "tf-idf":
-                tfidf_vectorizer = TfidfVectorizer()
-                tfidf_matrix = tfidf_vectorizer.fit_transform(text_data)
+            vectorizer = package.get("text_vectorizer", None)
+            vectorizer_type = package.get("text_vectorizer_type", "none")
+
+            if vectorizer_type == "tf-idf" and vectorizer is not None:
+                tfidf_matrix = vectorizer.transform(text_data)
 
                 text_features_df = pd.DataFrame(
                     tfidf_matrix.toarray(),
-                    columns=tfidf_vectorizer.get_feature_names_out(),
+                    columns=vectorizer.get_feature_names_out(),
                     index=data.index
                 )
 
@@ -289,13 +276,12 @@ def process_text(data, text_feature, config):
 
                 print(Fore.GREEN + "Texto tratado con éxito usando TF-IDF" + Fore.RESET)
 
-            elif config["preprocessing"]["text_process"] == "bow":
-                bow_vectorizer = CountVectorizer()
-                bow_matrix = bow_vectorizer.fit_transform(text_data)
+            elif vectorizer_type == "bow" and vectorizer is not None:
+                bow_matrix = vectorizer.transform(text_data)
 
                 text_features_df = pd.DataFrame(
                     bow_matrix.toarray(),
-                    columns=bow_vectorizer.get_feature_names_out(),
+                    columns=vectorizer.get_feature_names_out(),
                     index=data.index
                 )
 
@@ -320,7 +306,7 @@ def drop_features(data, config):
     Elimina las columnas especificadas del conjunto de datos.
     """
     try:
-        data = data.drop(columns=config["preprocessing"].get("drop_features", []), errors="ignore")
+        data = data.drop(columns=package.get("drop_features", []), errors="ignore")
         print(Fore.GREEN + "Columnas eliminadas con éxito" + Fore.RESET)
         return data
     except Exception as e:
@@ -328,16 +314,11 @@ def drop_features(data, config):
         print(e)
         sys.exit(1)
 
-def align_features_to_model(X_test, model):
+def align_features_to_model(X_test, package):
     """
     Alinea las columnas de X_test con las columnas que espera el modelo.
     """
-    expected_features = None
-
-    if hasattr(model, "feature_names_in_"):
-        expected_features = list(model.feature_names_in_)
-    elif hasattr(model, "best_estimator_") and hasattr(model.best_estimator_, "feature_names_in_"):
-        expected_features = list(model.best_estimator_.feature_names_in_)
+    expected_features = package.get("final_feature_columns", None)
 
     if expected_features is None:
         print(Fore.YELLOW + "No se han encontrado nombres de columnas esperadas en el modelo. No se alinean columnas." + Fore.RESET)
@@ -356,7 +337,7 @@ def align_features_to_model(X_test, model):
     print(Fore.GREEN + "Columnas alineadas con el modelo" + Fore.RESET)
     return X_test
 
-def preprocess_test_data(data, config, model, target_column=None):
+def preprocess_test_data(data, config, package, target_column=None):
     """
     Separa la columna objetivo, preprocesa el resto y devuelve X_test e y_real.
     """
@@ -368,15 +349,18 @@ def preprocess_test_data(data, config, model, target_column=None):
         data = data.drop(columns=[target_column])
         print(f"Columna objetivo '{target_column}' separada correctamente")
 
-    numerical_feature, text_feature, categorical_feature = select_features(data, config)
+    numerical_feature, text_feature, categorical_feature = select_features(data, config, package)
 
-    data = process_missing_values(data, numerical_feature, categorical_feature, config)
+    data = process_missing_values(data, numerical_feature, categorical_feature, config, package)
     data = simplify_text(data, text_feature)
-    data = cat2num(data, categorical_feature)
-    data = reescaler(data, numerical_feature, config)
-    data = process_text(data, text_feature, config)
+    data = cat2num(data, categorical_feature, package)
+    data = reescaler(data, numerical_feature, config, package)
+    data = process_text(data, text_feature, config, package)
     data = drop_features(data, config)
-    data = align_features_to_model(data, model)
+    data = align_features_to_model(data, package)
+
+    if y_real is not None:
+        y_real = y_real.loc[data.index]
 
     return data, y_real
 
@@ -447,10 +431,11 @@ if __name__ == '__main__':
     print("\nDatos cargados: ")
     print(data_original.head())
 
-    model = load_model(model_path)
+    package = load_model(model_path)
+    model = package["model"]
 
     # 4. Pasar config (diccionario) a las funciones de preprocesado
-    X_test, y_real = preprocess_test_data(data_original.copy(), config, model, target_column)
+    X_test, y_real = preprocess_test_data(data_original.copy(), config, package, target_column)
 
     print("\n- Realizando predicciones... ")
     predictions = model.predict(X_test)
@@ -458,7 +443,10 @@ if __name__ == '__main__':
     results = data_original.copy()
 
     if y_real is not None:
+        results = results.loc[X_test.index].copy()
         results[target_column + "_REAL"] = y_real.values
+    else:
+        results = results.loc[X_test.index].copy()
 
     results[target_column + "_PRED"] = predictions
 
